@@ -7,8 +7,8 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-    timeout-minutes: 90
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
 
     steps:
       - name: Checkout repo
@@ -31,30 +31,50 @@ jobs:
           sudo apt-get install -y \
             git zip unzip openjdk-17-jdk autoconf libtool pkg-config \
             zlib1g-dev libncurses5-dev libncursesw5-dev cmake libffi-dev \
-            libssl-dev automake aidl
+            libssl-dev automake aidl libltdl-dev
 
       - name: Install Buildozer
         run: |
           pip install --upgrade pip setuptools wheel
           pip install buildozer cython==0.29.36
 
-      - name: Cache Buildozer SDK/NDK
+      - name: Cache Buildozer global
         uses: actions/cache@v4
         with:
-          path: |
-            ~/.buildozer
-            .buildozer
-          key: buildozer-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
+          path: ~/.buildozer
+          key: buildozer-global-${{ hashFiles('buildozer.spec') }}
+          restore-keys: |
+            buildozer-global-
 
+      - name: Cache Buildozer local
+        uses: actions/cache@v4
+        with:
+          path: .buildozer
+          key: buildozer-local-${{ hashFiles('buildozer.spec') }}
+          restore-keys: |
+            buildozer-local-
+
+      # ⚡ ГЛАВНОЕ ИСПРАВЛЕНИЕ: убран `yes |` — используем printf
       - name: Build APK (debug)
+        env:
+          BUILDOZER_ALLOW_ROOT: '1'
         run: |
-          export BUILDOZER_ALLOW_ROOT=1
-          yes | buildozer -v android debug
+          printf 'y\n' | buildozer -v android debug
 
       - name: Upload APK artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: assistant-debug-apk
           path: bin/*.apk
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 30
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: .buildozer/**/build.log
+          if-no-files-found: ignore
+          retention-days: 7
