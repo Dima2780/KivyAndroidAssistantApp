@@ -38,32 +38,42 @@ jobs:
           pip install --upgrade pip setuptools wheel
           pip install buildozer cython==0.29.36
 
-      - name: Cache Buildozer global
+      - name: Cache Buildozer
         uses: actions/cache@v4
         with:
-          path: ~/.buildozer
-          key: bz-global-${{ hashFiles('buildozer.spec') }}
-          restore-keys: bz-global-
-
-      - name: Cache Buildozer local
-        uses: actions/cache@v4
-        with:
-          path: .buildozer
-          key: bz-local-${{ hashFiles('buildozer.spec') }}
-          restore-keys: bz-local-
+          path: |
+            ~/.buildozer
+            .buildozer
+          key: bz-${{ hashFiles('buildozer.spec') }}
+          restore-keys: bz-
 
       - name: Build APK (debug)
         env:
           BUILDOZER_ALLOW_ROOT: '1'
         run: |
+          set -o pipefail
           printf 'y\n' | buildozer -v android debug 2>&1 | tee build_full.log
+        continue-on-error: true
 
-      - name: Upload APK
+      - name: Locate APK anywhere
+        if: always()
+        run: |
+          echo "=== Ищем APK по всей системе ==="
+          find $GITHUB_WORKSPACE -name "*.apk" -type f 2>/dev/null || echo "нет в workspace"
+          find ~ -name "*.apk" -type f 2>/dev/null || echo "нет в HOME"
+          echo "=== Содержимое bin/ ==="
+          ls -la bin/ 2>/dev/null || echo "bin/ пусто или нет"
+          echo "=== Хвост лога ==="
+          tail -60 build_full.log || echo "лога нет"
+
+      - name: Upload any APK found
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: assistant-apk
-          path: bin/*.apk
+          name: apk-artifact
+          path: |
+            **/*.apk
+            bin/
           if-no-files-found: warn
           retention-days: 30
 
