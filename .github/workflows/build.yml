@@ -31,7 +31,7 @@ jobs:
           sudo apt-get install -y \
             git zip unzip openjdk-17-jdk autoconf libtool pkg-config \
             zlib1g-dev libncurses5-dev libncursesw5-dev cmake libffi-dev \
-            libssl-dev automake aidl libltdl-dev
+            libssl-dev automake aidl libltdl-dev libjpeg-dev libpng-dev
 
       - name: Install Buildozer
         run: |
@@ -42,39 +42,36 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.buildozer
-          key: buildozer-global-${{ hashFiles('buildozer.spec') }}
-          restore-keys: |
-            buildozer-global-
+          key: bz-global-${{ hashFiles('buildozer.spec') }}
+          restore-keys: bz-global-
 
       - name: Cache Buildozer local
         uses: actions/cache@v4
         with:
           path: .buildozer
-          key: buildozer-local-${{ hashFiles('buildozer.spec') }}
-          restore-keys: |
-            buildozer-local-
+          key: bz-local-${{ hashFiles('buildozer.spec') }}
+          restore-keys: bz-local-
 
-      # ⚡ ГЛАВНОЕ ИСПРАВЛЕНИЕ: убран `yes |` — используем printf
       - name: Build APK (debug)
         env:
           BUILDOZER_ALLOW_ROOT: '1'
         run: |
-          printf 'y\n' | buildozer -v android debug
+          printf 'y\n' | buildozer -v android debug 2>&1 | tee build_full.log
 
-      - name: Upload APK artifact
+      - name: Upload APK
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: assistant-debug-apk
+          name: assistant-apk
           path: bin/*.apk
           if-no-files-found: warn
           retention-days: 30
 
-      - name: Upload build log
+      - name: Upload full log
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: build-log
-          path: .buildozer/**/build.log
+          path: build_full.log
           if-no-files-found: ignore
-          retention-days: 7
+          retention-days: 14
