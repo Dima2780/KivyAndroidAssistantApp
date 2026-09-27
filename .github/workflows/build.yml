@@ -47,7 +47,9 @@ jobs:
           key: bz-${{ hashFiles('buildozer.spec') }}
           restore-keys: bz-
 
+      # ⚡ Сборка с ЛОГИРОВАНИЕМ ВСЕГО
       - name: Build APK (debug)
+        id: buildozer
         env:
           BUILDOZER_ALLOW_ROOT: '1'
         run: |
@@ -55,29 +57,56 @@ jobs:
           printf 'y\n' | buildozer -v android debug 2>&1 | tee build_full.log
         continue-on-error: true
 
-      - name: Locate APK anywhere
+      # 🔍 ДЕТЕКТИВ — ищем APK где угодно
+      - name: Locate APK
+        id: locate
         if: always()
         run: |
-          echo "=== Ищем APK по всей системе ==="
-          find $GITHUB_WORKSPACE -name "*.apk" -type f 2>/dev/null || echo "нет в workspace"
-          find ~ -name "*.apk" -type f 2>/dev/null || echo "нет в HOME"
-          echo "=== Содержимое bin/ ==="
-          ls -la bin/ 2>/dev/null || echo "bin/ пусто или нет"
-          echo "=== Хвост лога ==="
-          tail -60 build_full.log || echo "лога нет"
+          echo "==============================================="
+          echo "  ПОИСК APK НА RUNNER'Е"
+          echo "==============================================="
+          echo ""
+          echo "--- Содержимое ./bin/ ---"
+          ls -la bin/ 2>/dev/null || echo "  ❌ папка ./bin/ отсутствует или пуста"
+          echo ""
+          echo "--- Поиск всех .apk в workspace ---"
+          find "$GITHUB_WORKSPACE" -name "*.apk" -type f 2>/dev/null
+          echo ""
+          echo "--- Поиск всех .apk в HOME ---"
+          find "$HOME" -name "*.apk" -type f 2>/dev/null | head -20
+          echo ""
+          echo "--- Поиск всех .apk в /tmp ---"
+          find /tmp -name "*.apk" -type f 2>/dev/null | head -20
+          echo ""
+          echo "==============================================="
+          echo "  ХВОСТ ЛОГА (последние 80 строк)"
+          echo "==============================================="
+          tail -80 build_full.log 2>/dev/null || echo "лога нет"
+          
+          # Ищем APK
+          APK=$(find "$GITHUB_WORKSPACE" "$HOME" /tmp -name "*.apk" -type f 2>/dev/null | head -1)
+          if [ -n "$APK" ]; then
+            echo ""
+            echo "✅ НАЙДЕН APK: $APK"
+            echo "apk_found=true" >> "$GITHUB_OUTPUT"
+            echo "apk_path=$APK" >> "$GITHUB_OUTPUT"
+          else
+            echo ""
+            echo "❌ APK НЕ НАЙДЕН"
+            echo "apk_found=false" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Upload any APK found
-        if: always()
+      # 📤 Грузим APK (если найден)
+      - name: Upload APK
+        if: always() && steps.locate.outputs.apk_found == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: apk-artifact
-          path: |
-            **/*.apk
-            bin/
-          if-no-files-found: warn
+          name: assistant-apk
+          path: ${{ steps.locate.outputs.apk_path }}
           retention-days: 30
 
-      - name: Upload full log
+      # 📋 Всегда грузим лог
+      - name: Upload log
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -85,3 +114,10 @@ jobs:
           path: build_full.log
           if-no-files-found: ignore
           retention-days: 14
+
+      # 💥 Если APK не найден — красим сборку КРАСНЫМ
+      - name: Fail if no APK
+        if: always() && steps.locate.outputs.apk_found != 'true'
+        run: |
+          echo "::error::APK не был собран — смотри build-log artifact"
+          exit 1
